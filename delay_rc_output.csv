@@ -1,0 +1,6 @@
+reservoir,delay,num_nodes,theta,integ_step,noise_amp, , ,
+Lang-Kobayashi,1e-09,200,1.1e-11,1e-13,0.001 , , ,
+phi_0,mzm_bias,mzm_range,kappa_fb,kappa_inj,detuning,bias_rel
+0,0,1.5708,5e+09,2e+11,2e+10,0.995
+Training NRMSE, Testing NRMSE
+0.0249423,0.0542959
