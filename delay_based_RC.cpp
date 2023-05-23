@@ -1,3 +1,10 @@
+/*
+
+written by: Mirko Goldmann
+date: 2023-05-15
+
+*/
+
 #include <armadillo>
 #include <cmath>
 #include "reservoirs.h"
