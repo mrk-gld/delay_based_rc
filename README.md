@@ -30,7 +30,7 @@ To use the code, follow these steps:
 5. Hyperparameter can be set using the command line. To set the delay parameter to 5 and the number of nodes to 100, run the executable with the following command: `./delay_based_RC -delay=5 -num_nodes=100`
 
 ## Parameters
-# General reservoir parameters
+### General reservoir parameters
 You can set the parameters of the model by passing command line arguments to the executable. The following parameters are available:
 
 - `-delay`: The delay parameter of the reservoir.
@@ -39,7 +39,7 @@ You can set the parameters of the model by passing command line arguments to the
 - `-integ_step`: The integration step size.
 - `-noise_amp`: The amplitude of the noise added to the reservoir.
 
-# Model specific parameters
+### Model specific parameters
 Every model has specific parameter that initially are set to default values usually taken from literature examples. Using the command line arguments one can change many of the parameters directly. For the parameter names and their corresponding property look at the models in reservoirs.h. 
 
 ## What the code does
