@@ -63,5 +63,10 @@
         "thread": "cpp",
         "cfenv": "cpp",
         "typeinfo": "cpp"
+    },
+    "workbench.colorCustomizations": {
+        "activityBar.background": "#283103",
+        "titleBar.activeBackground": "#384505",
+        "titleBar.activeForeground": "#F7FDDD"
     }
 }

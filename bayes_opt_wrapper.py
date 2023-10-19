@@ -14,12 +14,15 @@ train_error_phrase = "Training NRMSE = "
 def eval_performance(params):
 
     print("evaluating parameters: ", params)
+    eta = params[0]
+    gamma = params[1]
+    kappa = params[2]
 
-    #p = Popen(['./delay_rc_slo', str(params[0]), str(params[1]), str(params[2])], stdin=PIPE, stdout=PIPE, stderr=PIPE)
-    p = Popen(['./delay_rc_slo', str(params[0])], stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    p = Popen(['./bin/delay_based_RC', f"-eta={eta}",f"-gamma={gamma}", f"-kappa={kappa}", "-num_nodes=10" ,"-theta=2", f"-delay={10*2.05}"], stdin=PIPE, stdout=PIPE, stderr=PIPE)
     output, err = p.communicate(b"input data that is passed to subprocess' stdin")
-    
+
     output = str(output)
+    print(output)
     if train_error_phrase in output:
         nrmse_str = output.split(train_error_phrase)[1]
         nrmse_str = nrmse_str.split("\\n")[0]
@@ -31,8 +34,8 @@ def eval_performance(params):
 
 search_space = [
         Real(1e-4, 3, name='eta',prior='log-uniform'),
-        #Real(-0.03, 0.0, name='lambda'),
-        #Real(-0.4, 0.0, name='gamma'),
+        Real(-0.4, 0.0, name='gamma'),
+        Real(0.01, 1, name="kappa")
     ]
 
 n_epoch_bayes_opt = 75

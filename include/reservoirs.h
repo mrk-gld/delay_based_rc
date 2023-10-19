@@ -32,7 +32,21 @@ struct dde_reservoir
     T z_t;
     vector<T> z_tau;
 
-    virtual void init_delay(){};
+    void init_delay(T x_0)
+    {
+        int steps_per_delay = int(delay / integ_step);
+        z_t = x_0;
+        z_tau = vector<float>(steps_per_delay);
+        for (int i = 0; i < steps_per_delay; i++)
+        {
+            z_tau[i] =  x_0 + noise_amp * noise(gen);
+        }
+    };
+
+    virtual void init_delay()
+    {
+        
+    };
 
     virtual float readout() { return 0.0; };
 
@@ -160,7 +174,7 @@ struct SLO : dde_reservoir<complex<float>>
         name = "stuart landau";
     }
 
-    void set_parameters(map<string, float> params)
+    void set_parameters(map<string, float> params) override
     {
         // check if parameter is in map
         if (params.find("lambda") != params.end())
@@ -355,7 +369,7 @@ struct Ikeda : dde_reservoir<float>
         dde_reservoir::print_parameters();
     }
 
-    void init_delay()
+    void init_delay() override
     {
         int steps_per_delay = int(delay / integ_step);
         z_t = 0.1f;

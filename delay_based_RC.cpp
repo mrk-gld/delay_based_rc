@@ -22,8 +22,6 @@ using namespace std;
     ofstream state_file("delay_rc_slo_states.csv");
 #endif
 
-
-
 template<typename T>
 mat integrate_dde_reservoir(dde_reservoir<T> *RC, vec u_t, vec mask){
 
@@ -31,22 +29,22 @@ mat integrate_dde_reservoir(dde_reservoir<T> *RC, vec u_t, vec mask){
     mat states(len_time, RC->num_nodes+1,fill::ones);
 
     double* m_ptr = mask.memptr();
-    double* u_ptr = u_t.memptr(); 
+    double* u_ptr = u_t.memptr();
 
     int steps_per_node = int(RC->theta / RC->integ_step);
-    
+
 
     for (int k = 0; k < len_time;k++){
         for (int n=0; n < RC->num_nodes; n++){
             for (int i = 0; i < steps_per_node; i++){
-                /* 
+                /*
                 you can decide between different integration schemes:
                 - RK4 is faster as it allows for larger integration steps however does not include noise
                 - Euler-Maruyama is slower due to smaller integration steps needed but includes noise
                  */
 
-                RC->runge_kutta_4th_order(m_ptr[n] * u_ptr[k]);
-                //RC->euler_marayuma(m_ptr[n] * u_ptr[k]);
+                //RC->runge_kutta_4th_order(m_ptr[n] * u_ptr[k]);
+                RC->euler_maruyama(m_ptr[n] * u_ptr[k]);
 
                 #ifdef LOGFILE
                     state_file << RC->readout() << "," << endl;
@@ -97,39 +95,62 @@ struct csvLogger{
     }
 
 };
-/*
-TODO: 
-- generate README.md
-- include Lang-Kobayashi model and adapt the integration methods for handling 2 dimension state variables
-*/
+
+map<string, float> get_parameter_map_from_arg(int argc, char** argv){
+    map<string,float> params;
+    if( argc > 1 ) {
+        // set parameters from command line using pattern -parameter=value
+
+        for (int i=1; i < argc; i++){
+            string arg = argv[i];
+            cout << arg << endl;
+            size_t pos = arg.find("=");
+            string key = arg.substr(1,pos-1);
+            string val = arg.substr(pos+1);
+            float f_val = stof(val);
+            params[key] = f_val;
+        }
+    }
+    return params;
+};
+
 
 int main(int argc, char** argv){
 
+    map<string,float> params = get_parameter_map_from_arg(argc, argv);
+    if (params.find("seed") == params.end()){
+        cout << "No seed parameter found, using default seed" << endl;
+        params["seed"] = 0;
+    }
+    if (params.find("pred_steps") == params.end()){
+        cout << "No prediction distance found, using default p=17" << endl;
+        params["pred_steps"] = 17;
+    }
     // loading input data
     vec mg_t;
-    mg_t.load("mackey_glass_tau17.csv", csv_ascii);
-    
+    mg_t.load("datasets/mackey_glass_tau17.csv", csv_ascii);
+
     // normalize input data
     mg_t -= mean(mg_t);
     mg_t /= stddev(mg_t);
 
     // split into target and input data
-    const int pred_steps = 1;
-    const int input_length = 2500;
+    const int pred_steps = params["pred_steps"];
+
+    const int init_length = 1000;
+    const int train_length = 5000;
+    const int test_length = 1000;
+    const int input_length = init_length + train_length + test_length + 10;
+
     vec u_t = mg_t.subvec(0,input_length);
     vec y_t = mg_t.subvec(pred_steps,input_length+pred_steps);
-
-    // split into training and testing data
-    
-    const int init_length = 1000;
-    const int train_length = 1000;
     if (init_length + train_length > input_length){
         cout << "Error: init_length + train_length > input_length" << endl;
         return 1;
     }
 
+   // split into training and testing data
     cout << "Splitting data into training and testing sets" << endl;
-    const int test_length = input_length - train_length - init_length;
     vec u_init = u_t.subvec(0,init_length);
 
     vec u_train = u_t.subvec(init_length,init_length+train_length-1);
@@ -152,29 +173,16 @@ int main(int argc, char** argv){
     //dde_reservoir<float> * rc = new MGO();
 
     // defining the ikeda delay based reservoir
-    //dde_reservoir<float> * rc = new Ikeda();
+    dde_reservoir<float> * rc = new Ikeda();
 
     // defining the lang kobayashi delay based reservoir
-    dde_reservoir<complex<float>> * rc = new LangKobayashi();
-    
+    //dde_reservoir<complex<float>> * rc = new LangKobayashi();
+
 
     //print selected reservoir
     cout << "Selected reservoir: " << rc->name << endl;
 
-    if( argc > 1 ) {
-        // set parameters from command line using pattern -parameter=value
-        map<string,float> params;
-        for (int i=1; i < argc; i++){
-            string arg = argv[i];
-            size_t pos = arg.find("=");
-            string key = arg.substr(1,pos-1);
-            string val = arg.substr(pos+1);
-            float f_val = stof(val);
-            params[key] = f_val;
-        }
-        rc->set_parameters(params);
-    }
-
+    rc->set_parameters(params);
     rc->init_delay();
     rc->print_parameters();
 
@@ -185,7 +193,9 @@ int main(int argc, char** argv){
     logger.writeHeader(rc);
 
     // generate random mask wit fixed seed for reproducibility
-    arma_rng::set_seed(42);
+    // check if there is a seed parameter in the command line
+
+    arma_rng::set_seed(int(params["seed"]));
     vec mask = vec(rc->num_nodes, arma::fill::randu)-0.5;
 
     // run reservoir with inputs
@@ -198,8 +208,17 @@ int main(int argc, char** argv){
     cout << "running testing phase" << endl;
     mat states_test = integrate_dde_reservoir(rc, u_test, mask);
 
-    cout << "training output layer" << endl;
-    vec w_out = solve(states_train, y_train);
+
+    //check if ridge regression parameter is set, if not use linear regression
+    vec w_out;
+    if (params.find("ridge_alpha") != params.end()){
+        cout << "training output layer using ridge Regression" << endl;
+        w_out = pinv(states_train.t()*states_train + params["ridge_alpha"]*eye(rc->num_nodes+1,rc->num_nodes+1)) * states_train.t()*y_train;
+    }
+    else{
+        cout << "training output layer using linear Regression" << endl;
+        w_out = solve(states_train, y_train);
+    }
 
     cout << "computing training predictions" << endl;
     vec y_pred_train(train_length);
@@ -211,7 +230,7 @@ int main(int argc, char** argv){
     //compute training nrmse
     double nrmse_train = sqrt(mean(pow(y_pred_train - y_train,2)));
     cout << "Training NRMSE = " << nrmse_train << endl;
-    
+
     cout << "computing testing predictions" << endl;
     vec y_pred(test_length);
     for (int i=0; i < test_length;i++){
