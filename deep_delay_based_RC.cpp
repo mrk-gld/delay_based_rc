@@ -47,10 +47,10 @@ mat integrate_dde_reservoir(vector<dde_reservoir<T>*> RC, vec u_t, vec mask){
                 //RC->runge_kutta_4th_order(m_ptr[n] * u_ptr[k]);
                 for(int l = 0; l < RC.size(); l++){
                     if (l == 0){
-                        RC[l-1]->euler_maruyama(m_ptr[n] * u_ptr[k]);
+                        RC[l]->euler_maruyama(m_ptr[n] * u_ptr[k]);
                     }
                     else{
-                        RC[l-1]->euler_maruyama(RC[l-1]->readout());
+                        RC[l]->euler_maruyama(RC[l-1]->readout());
                     }
                         
                 }
@@ -61,7 +61,7 @@ mat integrate_dde_reservoir(vector<dde_reservoir<T>*> RC, vec u_t, vec mask){
             }
             for(int l = 0; l < RC.size(); l++){
                 const int start = l * RC[0]->num_nodes;
-                states(k, start) = RC[l]->readout();
+                states(k, start+n) = RC[l]->readout();
             }
             
         }

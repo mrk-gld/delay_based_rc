@@ -24,5 +24,32 @@
         ],
         "preLaunchTask": "build delay_based_RC_ipc",
         "miDebuggerArgs": "-i=mi"
+    },
+    {
+        "name": "Debug deep delay_based_RC_ipc",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/bin/deep_delay_based_RC_ipc",
+        "args": [
+            "-num_nodes=80",
+            "-theta=0.3125",
+            "-delay_layer0=27.5",
+            "-delay_layer1=60"
+        ],
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}",
+        "environment": [],
+        "externalConsole": false,
+        "MIMode": "gdb",
+        "miDebuggerPath": "/usr/bin/gdb",
+        "setupCommands": [
+            {
+                "description": "Enable pretty-printing for gdb",
+                "text": "-enable-pretty-printing",
+                "ignoreFailures": true
+            }
+        ],
+        "preLaunchTask": "build delay_based_RC_ipc",
+        "miDebuggerArgs": "-i=mi"
     }]
 }

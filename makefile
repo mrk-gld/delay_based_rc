@@ -1,5 +1,6 @@
 COMP = g++
 OPT = -std=gnu++17 -Ofast -DARMA_DONT_USE_WRAPPER
+OPT_DEBUG = -std=gnu++17 -g -DARMA_DONT_USE_WRAPPER
 LIB = -I ./include -lm -pthread -llapack -lopenblas -larmadillo -lboost_system -lboost_filesystem -lstdc++
 BUILDDIR = bin/
 
@@ -11,3 +12,6 @@ deep_delay_based_RC: deep_delay_based_RC.cpp
 
 delay_based_RC_ipc: delay_based_RC_ipc.cpp
 		$(COMP) $(OPT) delay_based_RC_ipc.cpp $(LIB) -o $(BUILDDIR)/delay_based_RC_ipc
+
+deep_delay_based_RC_ipc: deep_delay_based_RC_ipc.cpp
+		$(COMP) $(OPT) deep_delay_based_RC_ipc.cpp $(LIB) -o $(BUILDDIR)/deep_delay_based_RC_ipc
