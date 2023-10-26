@@ -1,0 +1,271 @@
+/*
+
+written by: Mirko Goldmann
+date: 2023-05-15
+
+*/
+
+#include <armadillo>
+#include <cmath>
+#include "reservoirs.h"
+#include <ostream>
+
+using namespace arma;
+using namespace std;
+
+//#define LOGFILE // comment out to disable logging
+// be aware logging slows down the simulation crucially
+
+//generate log file
+#ifdef LOGFILE
+    ofstream logfile("delay_rc_slo.log");
+    ofstream state_file("delay_rc_slo_states.csv");
+#endif
+
+template<typename T>
+mat integrate_dde_reservoir(vector<dde_reservoir<T>*> RC, vec u_t, vec mask){
+
+    int len_time = u_t.n_elem;
+    const int num_nodes = RC[0]->num_nodes * RC.size()+1;
+    mat states(len_time, num_nodes, fill::ones);
+
+    double* m_ptr = mask.memptr();
+    double* u_ptr = u_t.memptr();
+
+    int steps_per_node = int(RC[0]->theta / RC[0]->integ_step);
+
+
+    for (int k = 0; k < len_time;k++){
+        for (int n=0; n < RC[0]->num_nodes; n++){
+            for (int i = 0; i < steps_per_node; i++){
+                /*
+                you can decide between different integration schemes:
+                - RK4 is faster as it allows for larger integration steps however does not include noise
+                - Euler-Maruyama is slower due to smaller integration steps needed but includes noise
+                 */
+
+                //RC->runge_kutta_4th_order(m_ptr[n] * u_ptr[k]);
+                for(int l = 0; l < RC.size(); l++){
+                    if (l == 0){
+                        RC[l-1]->euler_maruyama(m_ptr[n] * u_ptr[k]);
+                    }
+                    else{
+                        RC[l-1]->euler_maruyama(RC[l-1]->readout());
+                    }
+                        
+                }
+
+                #ifdef LOGFILE
+                    state_file << RC->readout() << "," << endl;
+                #endif
+            }
+            for(int l = 0; l < RC.size(); l++){
+                const int start = l * RC[0]->num_nodes;
+                states(k, start) = RC[l]->readout();
+            }
+            
+        }
+    }
+
+    return states;
+}
+
+struct csvLogger{
+
+    string filename;
+    ofstream file;
+
+    void init(string filename){
+        this->filename = filename;
+        file.open(filename);
+    }
+
+    void log(string line){
+        file << line << endl;
+    }
+
+    void close(){
+        file.close();
+    }
+
+    template<typename T>
+    void writeHeader(dde_reservoir<T> *RC){
+        file << "reservoir,delay,num_nodes,theta,integ_step,noise_amp, , ," << endl;
+        file << RC->name << ","<< RC->delay << "," << RC->num_nodes << "," << RC->theta << "," << RC->integ_step << "," << RC->noise_amp << " , , ," << endl;
+        file << RC->csv_header();
+    }
+
+    template<typename T>
+    csvLogger& operator<<(const T& line){
+        file << line;
+        return *this;
+    }
+
+    // allows for chaining of << operator
+    csvLogger& operator<<(std::ostream& (*pManip)(std::ostream&)) {
+        file << pManip;
+        return *this;
+    }
+
+};
+
+map<string, float> get_parameter_map_from_arg(int argc, char** argv){
+    map<string,float> params;
+    if( argc > 1 ) {
+        // set parameters from command line using pattern -parameter=value
+
+        for (int i=1; i < argc; i++){
+            string arg = argv[i];
+            cout << arg << endl;
+            size_t pos = arg.find("=");
+            string key = arg.substr(1,pos-1);
+            string val = arg.substr(pos+1);
+            float f_val = stof(val);
+            params[key] = f_val;
+        }
+    }
+    return params;
+};
+
+
+int main(int argc, char** argv){
+
+    map<string,float> params = get_parameter_map_from_arg(argc, argv);
+    if (params.find("seed") == params.end()){
+        cout << "No seed parameter found, using default seed" << endl;
+        params["seed"] = 0;
+    }
+    if (params.find("pred_steps") == params.end()){
+        cout << "No prediction distance found, using default p=17" << endl;
+        params["pred_steps"] = 17;
+    }
+    // loading input data
+    vec mg_t;
+    mg_t.load("datasets/mackey_glass_tau17.csv", csv_ascii);
+
+    // normalize input data
+    mg_t -= mean(mg_t);
+    mg_t /= stddev(mg_t);
+
+    // split into target and input data
+    const int pred_steps = params["pred_steps"];
+
+    const int init_length = 1000;
+    const int train_length = 5000;
+    const int test_length = 1000;
+    const int input_length = init_length + train_length + test_length + 10;
+
+    vec u_t = mg_t.subvec(0,input_length);
+    vec y_t = mg_t.subvec(pred_steps,input_length+pred_steps);
+    if (init_length + train_length > input_length){
+        cout << "Error: init_length + train_length > input_length" << endl;
+        return 1;
+    }
+
+   // split into training and testing data
+    cout << "Splitting data into training and testing sets" << endl;
+    vec u_init = u_t.subvec(0,init_length);
+
+    vec u_train = u_t.subvec(init_length,init_length+train_length-1);
+    vec y_train = y_t.subvec(init_length,init_length+train_length-1);
+
+    vec u_test = u_t.subvec(init_length+train_length,init_length+train_length+test_length-1);
+    vec y_test = y_t.subvec(init_length+train_length,init_length+train_length+test_length-1);
+
+    /* you can choose between different model for the delay-based reservoir:
+        - class SLO: Stuart-Landau oscillator
+        - class MGO: Mackey-Glass oscillator
+        - class Ikeda: Ikeda oscillator
+        - class LangKobayashi: Lang-Kobayashi model
+    */
+
+    // defining the stuart landau delay based reservoir
+    //dde_reservoir<complex<float>> * rc = new SLO();
+
+    // defining the mackey glass delay based reservoir
+    //dde_reservoir<float> * rc = new MGO();
+
+    // defining the ikeda delay based reservoir
+    vector<dde_reservoir<float>*> deep_reservoir;
+    for(int i = 0; i < params["layers"]; i++){
+        dde_reservoir<float> * rc = new Ikeda();
+        //print selected reservoir
+        cout << "Reservoir layer: " << i+1 << endl;
+        cout << "Selected reservoir: " << rc->name << endl;
+
+        rc->set_parameters(params);
+        rc->init_delay();
+        rc->print_parameters();
+        deep_reservoir.push_back(rc);
+    }
+    
+    // defining the lang kobayashi delay based reservoir
+    //dde_reservoir<complex<float>> * rc = new LangKobayashi();
+
+    // logging to file
+    csvLogger logger;
+
+    logger.init("delay_rc_output.csv");
+    logger.writeHeader(deep_reservoir[0]);
+
+    // generate random mask wit fixed seed for reproducibility
+    // check if there is a seed parameter in the command line
+
+    arma_rng::set_seed(int(params["seed"]));
+    vec mask = vec(deep_reservoir[0]->num_nodes, arma::fill::randu)-0.5;
+
+    // run reservoir with inputs
+    cout << "running initial phase" << endl;
+    integrate_dde_reservoir(deep_reservoir, u_init, mask);
+
+    cout << "running training phase" << endl;
+    mat states_train = integrate_dde_reservoir(deep_reservoir, u_train, mask);
+
+    cout << "running testing phase" << endl;
+    mat states_test = integrate_dde_reservoir(deep_reservoir, u_test, mask);
+
+
+    //check if ridge regression parameter is set, if not use linear regression
+    vec w_out;
+    if (params.find("ridge_alpha") != params.end()){
+        cout << "training output layer using ridge Regression" << endl;
+        w_out = pinv(states_train.t()*states_train + params["ridge_alpha"]*eye(deep_reservoir[0]->num_nodes+1,deep_reservoir[0]->num_nodes+1)) * states_train.t()*y_train;
+    }
+    else{
+        cout << "training output layer using linear Regression" << endl;
+        w_out = solve(states_train, y_train);
+    }
+
+    cout << "computing training predictions" << endl;
+    vec y_pred_train(train_length);
+    for (int i=0; i < train_length;i++){
+        vec state_col = states_train.row(i).t();
+        y_pred_train(i) = dot(w_out, state_col);
+    }
+
+    //compute training nrmse
+    double nrmse_train = sqrt(mean(pow(y_pred_train - y_train,2)));
+    cout << "Training NRMSE = " << nrmse_train << endl;
+
+    cout << "computing testing predictions" << endl;
+    vec y_pred(test_length);
+    for (int i=0; i < test_length;i++){
+        vec state_col = states_test.row(i).t();
+        y_pred(i) = dot(w_out, state_col);
+    }
+
+    //compute test nrmse
+    double nrmse = sqrt(mean(pow(y_pred - y_test,2)));
+    cout << "Testing NRMSE = " << nrmse << endl;
+
+    logger << "Training NRMSE, Testing NRMSE" << std::endl;
+    logger << nrmse_train << "," << nrmse << std::endl;
+
+    logger.close();
+
+    // save results
+    y_pred.save("y_pred.csv", csv_ascii);
+    y_test.save("y_test.csv", csv_ascii);
+
+    return 0;
+};
